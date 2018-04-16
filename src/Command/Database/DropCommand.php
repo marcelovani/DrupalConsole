@@ -10,6 +10,7 @@ namespace Drupal\Console\Command\Database;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Process\ProcessBuilder;
 use Drupal\Console\Core\Command\Command;
 use Drupal\Core\Database\Connection;
 use Drupal\Console\Command\Shared\ConnectTrait;
@@ -24,18 +25,18 @@ class DropCommand extends Command
     use ConnectTrait;
 
     /**
-     * @var Connection
+     * @var string
      */
-    protected $database;
+    protected $appRoot;
 
     /**
      * DropCommand constructor.
      *
      * @param Connection $database
      */
-    public function __construct(Connection $database)
+    public function __construct($appRoot)
     {
-        $this->database = $database;
+        $this->appRoot = $appRoot;
         parent::__construct();
     }
 
@@ -64,10 +65,12 @@ class DropCommand extends Command
     {
         $database = $input->getArgument('database');
         $yes = $input->getOption('yes');
+        $learning = $input->getOption('learning');
+        $noInteraction = $input->getOption('no-interaction');
 
         $databaseConnection = $this->resolveConnection($database);
 
-        if (!$yes) {
+        if (!$yes && !$noInteraction) {
             if (!$this->getIo()->confirm(
                 sprintf(
                     $this->trans('commands.database.drop.question.drop-tables'),
@@ -80,22 +83,29 @@ class DropCommand extends Command
             }
         }
 
-        $schema = $this->database->schema();
-        $tables = $schema->findTables('%');
-        $tableRows = [];
+        $commands[] = array(
+            'command' => 'database:query',
+            'arguments' => array(
+                'query' => sprintf(
+                    'DROP DATABASE IF EXISTS %s',
+                    $databaseConnection['database']
+                )
+            ),
+            'options' => array(
+                'learning' => $learning,
+            ),
+        );
 
-        foreach ($tables as $table) {
-            if ($schema->dropTable($table)) {
-                $tableRows['success'][] = [$table];
-            } else {
-                $tableRows['error'][] = [$table];
-            }
+        $this->runCommands($commands);
+
+        if ($this->runCommands($commands) != 0) {
+            return 1;
         }
 
         $this->getIo()->success(
             sprintf(
-                $this->trans('commands.database.drop.messages.table-drop'),
-                count($tableRows['success'])
+                $this->trans('commands.database.drop.messages.db-drop'),
+                $databaseConnection['database']
             )
         );
 
