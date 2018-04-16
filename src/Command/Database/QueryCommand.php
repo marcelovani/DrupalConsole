@@ -12,6 +12,7 @@
 
 namespace Drupal\Console\Command\Database;
 
+use Drupal\KernelTests\Core\Entity\EntityCrudHookTest;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -67,9 +68,8 @@ class QueryCommand extends Command
         $databaseConnection = $this->resolveConnection($database);
 
         $connection = sprintf(
-            '%s -A --database=%s --user=%s --password=%s --host=%s --port=%s',
+            '%s -A --user=%s --password=%s --host=%s --port=%s',
             $databaseConnection['driver'],
-            $databaseConnection['database'],
             $databaseConnection['username'],
             $databaseConnection['password'],
             $databaseConnection['host'],
