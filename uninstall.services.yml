@@ -50,6 +50,29 @@ services:
     class: Drupal\Console\Generator\DockerInitGenerator
     tags:
       - { name: drupal.generator }
+  console.database_query:
+    class: Drupal\Console\Command\Database\QueryCommand
+    tags:
+      - { name: drupal.command }
+  console.database_drop:
+    class: Drupal\Console\Command\Database\DropCommand
+    arguments: ['@app.root']
+    tags:
+      - { name: drupal.command }
+  console.database_create:
+    class: Drupal\Console\Command\Database\CreateCommand
+    arguments: ['@app.root']
+    tags:
+      - { name: drupal.command }
+  console.database_restore:
+    class: Drupal\Console\Command\Database\RestoreCommand
+    arguments: ['@app.root']
+    tags:
+      - { name: drupal.command }
+  console.database_connect:
+    class: Drupal\Console\Command\Database\ConnectCommand
+    tags:
+      - { name: drupal.command }
   # Drupal services
   http_client:
     class: GuzzleHttp\Client
