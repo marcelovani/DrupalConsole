@@ -162,12 +162,27 @@ class InstallCommand extends ContainerAwareCommand
                 InputOption::VALUE_REQUIRED,
                 $this->trans('commands.site.install.arguments.account-pass')
             )
+            // Allows to restore the site from an existing db-dump.
+            ->addOption(
+                'dump-import',
+                null,
+                InputOption::VALUE_OPTIONAL,
+                $this->trans('commands.database.restore.options.file')
+            )
+            // Allows to install the site from existing config.
+            ->addOption(
+                'config-import',
+                null,
+                InputOption::VALUE_NONE,
+                $this->trans('commands.site.install.arguments.config-import')
+            )
             ->addOption(
                 'force',
                 null,
                 InputOption::VALUE_NONE,
                 $this->trans('commands.site.install.arguments.force')
             )
+
             ->setAliases(['si']);
     }
 
@@ -381,56 +396,21 @@ class InstallCommand extends ContainerAwareCommand
             $_SERVER['HTTP_HOST'] = $uri;
         }
 
-        // Database options
-        $dbType = $input->getOption('db-type')?:'mysql';
-        $dbFile = $input->getOption('db-file');
-        $dbHost = $input->getOption('db-host')?:'127.0.0.1';
-        $dbName = $input->getOption('db-name')?:'drupal_'.time();
-        $dbUser = $input->getOption('db-user')?:'root';
-        $dbPass = $input->getOption('db-pass');
-        $dbPrefix = $input->getOption('db-prefix');
-        $dbPort = $input->getOption('db-port')?:'3306';
-        $force = $input->getOption('force');
-
-        $databases = $this->site->getDatabaseTypes();
-
-        if ($dbType === 'sqlite') {
-            $database = [
-              'database' => $dbFile,
-              'prefix' => $dbPrefix,
-              'namespace' => $databases[$dbType]['namespace'],
-              'driver' => $dbType,
-            ];
-
-            if ($force) {
-                $fs = new Filesystem();
-                $fs->remove($dbFile);
-            }
-        } else {
-            $database = [
-              'database' => $dbName,
-              'username' => $dbUser,
-              'password' => $dbPass,
-              'prefix' => $dbPrefix,
-              'port' => $dbPort,
-              'host' => $dbHost,
-              'namespace' => $databases[$dbType]['namespace'],
-              'driver' => $dbType,
-            ];
-
-            if ($force && Database::isActiveConnection()) {
-                $schema = Database::getConnection()->schema();
-                $tables = $schema->findTables('%');
-                foreach ($tables as $table) {
-                    $schema->dropTable($table);
-                }
-            }
-        }
+        $dumpImport = $input->getOption('dump-import')?:false;
+        $configImport = $input->getOption('config-import');
 
         try {
             $drupalFinder = new DrupalFinder();
             $drupalFinder->locateRoot(getcwd());
-            $this->runInstaller($database, $uri);
+
+            if ($dumpImport) {
+                // Restoring the site from existing dump.
+                $this->databaseRestore($input);
+            }
+            else {
+                // Run a fresh install.
+                $this->runInstaller($input);
+            }
 
             $autoload = $this->container->get('class_loader');
             $drupal = new Drupal(
@@ -442,6 +422,13 @@ class InstallCommand extends ContainerAwareCommand
             $this->getApplication()->setContainer($container);
             $this->getApplication()->validateCommands();
             $this->getApplication()->loadCommands();
+
+            if ($configImport) {
+                $this->configImport();
+            }
+
+            // Clear cache.
+            $this->cacheRebuild();
         } catch (Exception $e) {
             $this->getIo()->error($e->getMessage());
             return 1;
@@ -492,7 +479,34 @@ class InstallCommand extends ContainerAwareCommand
         return $renamed;
     }
 
-    protected function runInstaller($database, $uri) {
+  /**
+   * Performs a site installation.
+   *
+   * @param $input The input
+   *
+   * @return int 0 if success, otherwise error number.
+   */
+    protected function runInstaller($input) {
+        $uri = parse_url($input->getParameterOption(['--uri', '-l'], 'default'), PHP_URL_HOST);
+        $learning = $input->getOption('learning');
+        $noInteraction = $input->getOption('no-interaction');
+        $database = $this->getDatabase($input);
+
+        $commands[] = array(
+            'command' => 'database:drop',
+            'options' => array(
+                'yes' => $noInteraction,
+                'learning' => $learning,
+            ),
+        );
+        $commands[] = array(
+            'command' => 'database:create',
+            'options' => array(
+                'learning' => $learning,
+            ),
+        );
+        $this->runCommands($commands);
+
         $input = $this->getIo()->getInput();
         $this->site->loadLegacyFile('/core/includes/install.core.inc');
 
@@ -552,8 +566,117 @@ class InstallCommand extends ContainerAwareCommand
             $this->restoreSitesFile();
         }
 
-        $this->getIo()->success($this->trans('commands.site.install.messages.installed'));
+        //$config = $this->configurationManager->readTarget($siteName);
+        $config = $this->configurationManager->getConfiguration();
+        //$repo = $config->get('application.composer.repositories.default');
+
+        // @todo Print the site url.
+        $this->getIo()->success($this->trans(sprintf(
+              'commands.site.install.messages.installed' . PHP_EOL . '%s',
+              $this->site->multisiteMode($uri)
+            )
+          )
+        );
 
         return 0;
     }
+
+    /**
+     * Gets the database connection details.
+     *
+     * @param $input InputArgument
+     *
+     * @return $database Database details.
+     */
+    protected function getDatabase($input) {
+      $force = $input->getOption('force');
+      $dbType = $input->getOption('db-type')?:'mysql';
+      $dbFile = $input->getOption('db-file');
+      $dbHost = $input->getOption('db-host')?:'127.0.0.1';
+      $dbName = $input->getOption('db-name')?:'drupal_'.time();
+      $dbUser = $input->getOption('db-user')?:'root';
+      $dbPass = $input->getOption('db-pass');
+      $dbPrefix = $input->getOption('db-prefix');
+      $dbPort = $input->getOption('db-port')?:'3306';
+
+      $databases = $this->site->getDatabaseTypes();
+
+      if ($dbType === 'sqlite') {
+        $database = [
+          'database' => $dbFile,
+          'prefix' => $dbPrefix,
+          'namespace' => $databases[$dbType]['namespace'],
+          'driver' => $dbType,
+        ];
+
+        if ($force) {
+          $fs = new Filesystem();
+          $fs->remove($dbFile);
+        }
+      } else {
+        $database = [
+          'database' => $dbName,
+          'username' => $dbUser,
+          'password' => $dbPass,
+          'prefix' => $dbPrefix,
+          'port' => $dbPort,
+          'host' => $dbHost,
+          'namespace' => $databases[$dbType]['namespace'],
+          'driver' => $dbType,
+        ];
+      }
+
+      return $database;
+    }
+
+    /**
+     * Imports existing db dump.
+     *
+     * @param $input InputArgument
+     *
+     * @return null
+     */
+    protected function databaseRestore($input) {
+      $learning = $input->getOption('learning');
+      $noInteraction = $input->getOption('no-interaction');
+      $importDump = $input->getOption('dump-import')?:false;
+
+      $commands[] = array(
+        'command' => 'database:restore',
+        'options' => array(
+          'file' => $importDump,
+          'yes' => $noInteraction,
+          'learning' => $learning,
+        ),
+      );
+      $this->runCommands($commands);
+
+    }
+
+    /**
+     * Runs a config import.
+     */
+    protected function configImport() {
+      // Run config:import in a separate process.
+      $commands[] = array(
+        'command' => 'exec',
+        'arguments' => array(
+          'bin' => 'drupal config:import'
+        )
+      );
+      $this->runCommands($commands);
+
+    }
+
+    /**
+     * Runs a cache rebuild.
+     */
+    protected function cacheRebuild() {
+      $commands[] = array(
+        'command' => 'cache:rebuild',
+      );
+      $this->runCommands($commands);
+
+    }
+
 }
