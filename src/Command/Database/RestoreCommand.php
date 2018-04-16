@@ -55,6 +55,12 @@ class RestoreCommand extends Command
                 InputOption::VALUE_REQUIRED,
                 $this->trans('commands.database.restore.options.file')
             )
+            ->addOption(
+               'yes',
+               'y',
+               InputOption::VALUE_NONE,
+               $this->trans('application.options.yes')
+            )
             ->setHelp($this->trans('commands.database.restore.help'))
             ->setAliases(['dbr']);
     }
@@ -66,8 +72,9 @@ class RestoreCommand extends Command
     {
         $database = $input->getArgument('database');
         $file = $input->getOption('file');
+        $yes = $input->getOption('yes');
         $learning = $input->getOption('learning');
-
+        $noInteraction = $input->getOption('no-interaction');
         $databaseConnection = $this->resolveConnection($database);
 
         if (!$file) {
@@ -76,53 +83,70 @@ class RestoreCommand extends Command
             );
             return 1;
         }
+
         if (strpos($file, '.sql.gz') !== false) {
             $catCommand = "gunzip -c %s | ";
         } else {
             $catCommand = "cat %s | ";
         }
+
+        $commands = array();
         if ($databaseConnection['driver'] == 'mysql') {
-            $command = sprintf(
-                $catCommand . 'mysql --user=%s --password=%s --host=%s --port=%s %s',
-                $file,
-                $databaseConnection['username'],
-                $databaseConnection['password'],
-                $databaseConnection['host'],
-                $databaseConnection['port'],
-                $databaseConnection['database']
+
+          // Recreate database.
+          $commands[] = array(
+              'command' => 'database:drop',
+              'options' => array(
+                  'yes' => $yes,
+                  'learning' => $learning,
+                  'no-interaction' => $noInteraction,
+              ),
+          );
+          $commands[] = array(
+              'command' => 'database:create',
+              'options' => array(
+                  'learning' => $learning,
+                  'no-interaction' => $noInteraction,
+              ),
+          );
+
+          // Import dump.
+          $commands[] = array(
+              'command' => 'exec',
+              'arguments' => array('bin' => sprintf(
+                  $catCommand . 'mysql --user=%s --password=%s --host=%s --port=%s %s',
+                  $file,
+                  $databaseConnection['username'],
+                  $databaseConnection['password'],
+                  $databaseConnection['host'],
+                  $databaseConnection['port'],
+                  $databaseConnection['database']
+              )),
             );
         } elseif ($databaseConnection['driver'] == 'pgsql') {
-            $command = sprintf(
-                'PGPASSWORD="%s" ' . $catCommand . 'psql -w -U %s -h %s -p %s -d %s',
-                $file,
-                $databaseConnection['password'],
-                $databaseConnection['username'],
-                $databaseConnection['host'],
-                $databaseConnection['port'],
-                $databaseConnection['database']
+            $commands[] = array(
+              'command' => 'exec',
+              'arguments' => array('bin' => sprintf(
+                  'PGPASSWORD="%s" ' . $catCommand . 'psql -w -U %s -h %s -p %s -d %s',
+                  $file,
+                  $databaseConnection['password'],
+                  $databaseConnection['username'],
+                  $databaseConnection['host'],
+                  $databaseConnection['port'],
+                  $databaseConnection['database']
+              )),
             );
         }
 
-        if ($learning) {
-            $this->getIo()->commentBlock($command);
-        }
-
-        $processBuilder = new ProcessBuilder(['-v']);
-        $process = $processBuilder->getProcess();
-        $process->setWorkingDirectory($this->appRoot);
-        $process->setTty($input->isInteractive());
-        $process->setCommandLine($command);
-        $process->run();
-
-        if (!$process->isSuccessful()) {
-            throw new \RuntimeException($process->getErrorOutput());
+        if ($this->runCommands($commands) != 0) {
+            return 1;
         }
 
         $this->getIo()->success(
             sprintf(
-                '%s %s',
-                $this->trans('commands.database.restore.messages.success'),
-                $file
+              '%s %s',
+              $this->trans('commands.database.restore.messages.success'),
+              $file
             )
         );
 
