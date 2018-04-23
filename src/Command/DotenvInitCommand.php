@@ -72,6 +72,9 @@ class DotenvInitCommand extends GenerateCommand
     protected function interact(InputInterface $input, OutputInterface $output)
     {
         foreach ($this->envParameters as $key => $value) {
+            if (key == 'server_root' && isset($this->envParameters['drupal_root'])) {
+                $value = $this->envParameters['drupal_root'] . '/web';
+            }
             $this->envParameters[$key] = $this->getIo()->ask(
                 'Enter value for ' . strtoupper($key),
                 $value
