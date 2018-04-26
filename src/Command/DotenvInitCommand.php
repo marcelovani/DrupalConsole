@@ -88,9 +88,21 @@ class DotenvInitCommand extends GenerateCommand
         }
 
         foreach ($this->envParameters as $key => $value) {
-            if (key == 'server_root' && isset($this->envParameters['drupal_root'])) {
+            if ($key == 'server_root' && isset($this->envParameters['drupal_root'])) {
                 $value = $this->envParameters['drupal_root'] . '/web';
             }
+
+            // Show available environments found on the yml file.
+            if (isset($siteConfig) && $key == 'environment') {
+                $env = $this->getIo()->choice(
+                    $this->trans('Select environment'),
+                    array_keys($siteConfig),
+                    reset($siteConfig),
+                    TRUE
+                );
+                continue;
+            }
+
             // Override default option using config from yml.
             if (isset($env) && isset($siteConfig)) {
                 $config = $siteConfig[$env];
@@ -137,11 +149,6 @@ class DotenvInitCommand extends GenerateCommand
                 'Enter value for ' . strtoupper($key),
                 $value
             );
-
-            // Store the env.
-            if ($key == 'environment') {
-                $env = $this->envParameters[$key];
-            }
         }
     }
 
