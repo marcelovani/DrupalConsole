@@ -100,6 +100,7 @@ class DotenvInitCommand extends GenerateCommand
                     reset($siteConfig),
                     TRUE
                 );
+                $env = reset($env);
                 continue;
             }
 
