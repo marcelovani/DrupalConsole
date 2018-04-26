@@ -10,6 +10,7 @@ use Symfony\Component\Filesystem\Filesystem;
 use Drupal\Component\Utility\Crypt;
 use Drupal\Console\Generator\DotenvInitGenerator;
 use Webmozart\PathUtil\Path;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Class InitCommand
@@ -24,7 +25,7 @@ class DotenvInitCommand extends GenerateCommand
     protected $generator;
 
     private $envParameters = [
-        'environment' => 'develop',
+        'environment' => 'dev',
         'database_name' => 'drupal',
         'database_user' => 'drupal',
         'database_password' => 'drupal',
@@ -63,6 +64,12 @@ class DotenvInitCommand extends GenerateCommand
                 null,
                 InputOption::VALUE_NONE,
                 $this->trans('commands.dotenv.init.options.load-settings')
+            )
+            ->addOption(
+                'load-from-yml',
+                '~/.console/sites/local.yml',
+                InputOption::VALUE_OPTIONAL,
+                $this->trans('commands.dotenv.init.options.load-yml')
             );
     }
 
@@ -71,14 +78,70 @@ class DotenvInitCommand extends GenerateCommand
      */
     protected function interact(InputInterface $input, OutputInterface $output)
     {
+        $ymlFile = $input->getOption('load-from-yml');
+        if (!empty($ymlFile)) {
+            // Convert the alias for home directory into the real path i.e. ~/.console.
+            if (substr($ymlFile, 0, 2) == '~/') {
+                $ymlFile = getenv('HOME') . '/' . substr($ymlFile, 2, strlen($ymlFile));
+            }
+            $siteConfig = Yaml::parse(file_get_contents($ymlFile));
+        }
+
         foreach ($this->envParameters as $key => $value) {
             if (key == 'server_root' && isset($this->envParameters['drupal_root'])) {
                 $value = $this->envParameters['drupal_root'] . '/web';
             }
+            // Override default option using config from yml.
+            if (isset($env) && isset($siteConfig)) {
+                $config = $siteConfig[$env];
+                switch ($key) {
+                    case 'database_name':
+                        $value = isset($config['db']['name']) ? $config['db']['name'] : $value;
+                        break;
+
+                    case 'database_user':
+                        $value = isset($config['db']['user']) ? $config['db']['user'] : $value;
+                        break;
+
+                    case 'database_password':
+                        $value = isset($config['db']['pass']) ? $config['db']['pass'] : $value;
+                        break;
+
+                    case 'database_host':
+                        $value = isset($config['db']['host']) ? $config['db']['host'] : $value;
+                        break;
+
+                    case 'database_port':
+                        $value = isset($config['db']['port']) ? $config['db']['port'] : $value;
+                        break;
+
+                    case 'host_name':
+                        $value = isset($config['host']) ? $config['host'] : $value;
+                        break;
+
+                    case 'host_port':
+                        $value = isset($config['port']) ? $config['port'] : $value;
+                        break;
+
+                    case 'drupal_root':
+                        $value = isset($config['root']) ? $config['root'] : $value;
+                        break;
+
+                    case 'server_root':
+                        $value = isset($config['server-root']) ? $config['server-root'] : $value;
+                        break;
+                }
+            }
+
             $this->envParameters[$key] = $this->getIo()->ask(
                 'Enter value for ' . strtoupper($key),
                 $value
             );
+
+            // Store the env.
+            if ($key == 'environment') {
+                $env = $this->envParameters[$key];
+            }
         }
     }
 
