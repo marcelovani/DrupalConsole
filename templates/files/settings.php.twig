@@ -1,3 +1,7 @@
+{% if load_yml is defined %}
+{{ yaml_comment('commands.dotenv.init.messages.load-yml') }}
+{% endif %}
+
 {% if load_from_env is defined %}
 {{ yaml_comment('commands.dotenv.init.messages.load-from-env') }}
 {% endif %}
