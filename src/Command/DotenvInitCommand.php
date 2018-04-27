@@ -180,9 +180,9 @@ class DotenvInitCommand extends GenerateCommand
         $parameters['database_user'] = isset($items['db']['user']) ? $items['db']['user'] : '';
         $parameters['database_password'] = isset($items['db']['pass']) ? $items['db']['pass'] : '';
         $parameters['database_host'] = isset($items['db']['host']) ? $items['db']['host'] : '';
-        $parameters['database_port'] = isset($items['db']['port']) ? $items['db']['port'] : '80';
+        $parameters['database_port'] = isset($items['db']['port']) ? $items['db']['port'] : '3306';
         $parameters['host_name'] = isset($items['host']) ? $items['host'] : '';
-        $parameters['host_port'] = isset($items['port']) ? $items['port'] : '';
+        $parameters['host_port'] = isset($items['port']) ? $items['port'] : '80';
         $parameters['drupal_root'] = isset($items['root']) ? $items['root'] : '';
         $parameters['server_root'] = isset($items['server-root']) ? $items['server-root'] : '';
 
