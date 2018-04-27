@@ -24,8 +24,8 @@ class DotenvInitCommand extends GenerateCommand
      */
     protected $generator;
 
-    private $envParameters = [
-        'environment' => 'dev',
+    private $defaultParameters = [
+        'environment' => 'develop',
         'database_name' => 'drupal',
         'database_user' => 'drupal',
         'database_password' => 'drupal',
@@ -36,6 +36,8 @@ class DotenvInitCommand extends GenerateCommand
         'drupal_root' => '/var/www/html',
         'server_root' => '/var/www/html/web'
     ];
+
+    private $envParameters = [];
 
     /**
      * InitCommand constructor.
@@ -78,75 +80,15 @@ class DotenvInitCommand extends GenerateCommand
      */
     protected function interact(InputInterface $input, OutputInterface $output)
     {
-        $ymlFile = $input->getOption('load-from-yml');
-        if (!empty($ymlFile)) {
-            // Convert the alias for home directory into the real path i.e. ~/.console.
-            if (substr($ymlFile, 0, 2) == '~/') {
-                $ymlFile = getenv('HOME') . '/' . substr($ymlFile, 2, strlen($ymlFile));
-            }
-            $siteConfig = Yaml::parse(file_get_contents($ymlFile));
-        }
+        $this->populateEnvParameters($input);
 
         foreach ($this->envParameters as $key => $value) {
             if ($key == 'server_root' && isset($this->envParameters['drupal_root'])) {
                 $value = $this->envParameters['drupal_root'] . '/web';
             }
 
-            // Show available environments found on the yml file.
-            if (isset($siteConfig) && $key == 'environment') {
-                $env = $this->getIo()->choice(
-                    $this->trans('Select environment'),
-                    array_keys($siteConfig),
-                    reset($siteConfig),
-                    TRUE
-                );
-                $env = reset($env);
-                continue;
-            }
-
-            // Override default option using config from yml.
-            if (isset($env) && isset($siteConfig)) {
-                $config = $siteConfig[$env];
-                switch ($key) {
-                    case 'database_name':
-                        $value = isset($config['db']['name']) ? $config['db']['name'] : $value;
-                        break;
-
-                    case 'database_user':
-                        $value = isset($config['db']['user']) ? $config['db']['user'] : $value;
-                        break;
-
-                    case 'database_password':
-                        $value = isset($config['db']['pass']) ? $config['db']['pass'] : $value;
-                        break;
-
-                    case 'database_host':
-                        $value = isset($config['db']['host']) ? $config['db']['host'] : $value;
-                        break;
-
-                    case 'database_port':
-                        $value = isset($config['db']['port']) ? $config['db']['port'] : $value;
-                        break;
-
-                    case 'host_name':
-                        $value = isset($config['host']) ? $config['host'] : $value;
-                        break;
-
-                    case 'host_port':
-                        $value = isset($config['port']) ? $config['port'] : $value;
-                        break;
-
-                    case 'drupal_root':
-                        $value = isset($config['root']) ? $config['root'] : $value;
-                        break;
-
-                    case 'server_root':
-                        $value = isset($config['server-root']) ? $config['server-root'] : $value;
-                        break;
-                }
-            }
-
-            $this->envParameters[$key] = $this->getIo()->ask(
+            // Let the user modify the parameters.
+            $this->envParameters[$key] = $this->getIo()->askEmpty(
                 'Enter value for ' . strtoupper($key),
                 $value
             );
@@ -159,19 +101,92 @@ class DotenvInitCommand extends GenerateCommand
     protected function execute(InputInterface $input, OutputInterface $output)
     {
         $fs = new Filesystem();
+
         $loadFromEnv = $input->getOption('load-from-env');
-        $loadSettings = $input->getOption('load-settings');
+
         if ($loadFromEnv) {
             $this->envParameters['load_from_env'] = $loadFromEnv;
         }
+
+        $loadSettings = $input->getOption('load-settings');
         if ($loadSettings) {
             $this->envParameters['load_settings'] = $loadSettings;
         }
+
+        $loadYml = $input->getOption('load-from-yml');
+        if ($loadYml) {
+            if (empty($this->envParameters)) {
+                $this->populateEnvParameters($input);
+            }
+            $this->envParameters['load_yml'] = $loadYml;
+        }
+
         $this->copySettingsFile($fs);
         $this->copyEnvFile($fs);
 
         $this->generator->setIo($this->getIo());
         $this->generator->generate($this->envParameters);
+    }
+
+    /**
+     * Populates the envParameters from default parameters or external source.
+     *
+     * @param InputInterface $input.
+     **/
+    protected function populateEnvParameters($input) {
+        $env = $input->getOption('env');
+        $ymlFile = $input->getOption('load-from-yml');
+
+        $parameters = null;
+        if (!empty($ymlFile)) {
+            $parameters = $this->loadFromYml($ymlFile, $env);
+        }
+
+        if (!empty($parameters)) {
+            $this->envParameters = $parameters;
+        }
+        else {
+            $this->envParameters = $this->defaultParameters;
+        }
+    }
+
+    /**
+     * Loads parameters from a site yml file.
+     *
+     * @param string $file The full path of the yml file.
+     * @param string $env The environment i.e. dev.
+     *
+     * @return array $parameters List of parameters.
+     */
+    protected function loadFromYml($file, $env) {
+        $parameters = [];
+
+        // Convert the alias for home directory into the real path i.e. ~/.console.
+        if (substr($file, 0, 2) == '~/') {
+            $file = getenv('HOME') . '/' . substr($file, 2, strlen($file));
+        }
+
+        $contents = Yaml::parse(file_get_contents($file));
+
+        if (!isset($contents[$env])) {
+            $this->getIo()->warning($this->trans('commands.dotenv.init.messages.env-not-found'));
+            return false;
+        }
+
+        $items = $contents[$env];
+
+        $parameters['environment'] = $env;
+        $parameters['database_name'] = isset($items['db']['name']) ? $items['db']['name'] : '';
+        $parameters['database_user'] = isset($items['db']['user']) ? $items['db']['user'] : '';
+        $parameters['database_password'] = isset($items['db']['pass']) ? $items['db']['pass'] : '';
+        $parameters['database_host'] = isset($items['db']['host']) ? $items['db']['host'] : '';
+        $parameters['database_port'] = isset($items['db']['port']) ? $items['db']['port'] : '80';
+        $parameters['host_name'] = isset($items['host']) ? $items['host'] : '';
+        $parameters['host_port'] = isset($items['port']) ? $items['port'] : '';
+        $parameters['drupal_root'] = isset($items['root']) ? $items['root'] : '';
+        $parameters['server_root'] = isset($items['server-root']) ? $items['server-root'] : '';
+
+        return $parameters;
     }
 
     protected function copySettingsFile(Filesystem $fs)
