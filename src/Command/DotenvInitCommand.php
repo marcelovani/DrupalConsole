@@ -104,6 +104,18 @@ class DotenvInitCommand extends GenerateCommand
 
         $loadFromEnv = $input->getOption('load-from-env');
 
+        $loadYml = $input->getOption('load-from-yml');
+        if ($loadYml) {
+            if (empty($this->envParameters)) {
+                $this->populateEnvParameters($input);
+            }
+            $this->envParameters['load_yml'] = $loadYml;
+        }
+
+        if (empty($this->envParameters)) {
+            $this->envParameters = $this->defaultParameters;
+        }
+
         if ($loadFromEnv) {
             $this->envParameters['load_from_env'] = $loadFromEnv;
         }
@@ -111,14 +123,6 @@ class DotenvInitCommand extends GenerateCommand
         $loadSettings = $input->getOption('load-settings');
         if ($loadSettings) {
             $this->envParameters['load_settings'] = $loadSettings;
-        }
-
-        $loadYml = $input->getOption('load-from-yml');
-        if ($loadYml) {
-            if (empty($this->envParameters)) {
-                $this->populateEnvParameters($input);
-            }
-            $this->envParameters['load_yml'] = $loadYml;
         }
 
         $this->copySettingsFile($fs);
