@@ -180,15 +180,15 @@ class DotenvInitCommand extends GenerateCommand
         $items = $contents[$env];
 
         $parameters['environment'] = $env;
-        $parameters['database_name'] = isset($items['db']['name']) ? $items['db']['name'] : '';
-        $parameters['database_user'] = isset($items['db']['user']) ? $items['db']['user'] : '';
+        $parameters['database_name'] = isset($items['db']['name']) ? $items['db']['name'] : $this->defaultParameters['database_name'];
+        $parameters['database_user'] = isset($items['db']['user']) ? $items['db']['user'] : $this->defaultParameters['database_user'];
         $parameters['database_password'] = isset($items['db']['pass']) ? $items['db']['pass'] : '';
-        $parameters['database_host'] = isset($items['db']['host']) ? $items['db']['host'] : '';
-        $parameters['database_port'] = isset($items['db']['port']) ? $items['db']['port'] : '3306';
-        $parameters['host_name'] = isset($items['host-name']) ? $items['host-name'] : '';
-        $parameters['host_port'] = isset($items['host-port']) ? $items['host-port'] : '80';
-        $parameters['drupal_root'] = isset($items['root']) ? $items['root'] : '';
-        $parameters['server_root'] = isset($items['server-root']) ? $items['server-root'] : '';
+        $parameters['database_host'] = isset($items['db']['host']) ? $items['db']['host'] : $this->defaultParameters['database_host'];
+        $parameters['database_port'] = isset($items['db']['port']) ? $items['db']['port'] : $this->defaultParameters['database_port'];
+        $parameters['host_name'] = isset($items['host-name']) ? $items['host-name'] : $this->defaultParameters['host_name'];
+        $parameters['host_port'] = isset($items['host-port']) ? $items['host-port'] : $this->defaultParameters['host_port'];
+        $parameters['drupal_root'] = $this->defaultParameters['drupal_root'];
+        $parameters['server_root'] = $this->defaultParameters['server_root'];
 
         return $parameters;
     }
